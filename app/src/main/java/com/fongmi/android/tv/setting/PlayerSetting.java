@@ -117,6 +117,20 @@ public class PlayerSetting {
         activePlayer = NONE;
     }
 
+    /**
+     * 同时播放：不申请音频焦点，也不因为其他应用抢占焦点而暂停。
+     *
+     * <p>默认开启。开启后本应用与 B 站等其他播放器可以同时出声，
+     * 画中画下切到别的应用也不会被 onAudioFocusChange 打断；关闭则恢复系统默认的独占式焦点行为。
+     */
+    public static boolean isPlayWithOthers() {
+        return Prefers.getBoolean("play_with_others", true);
+    }
+
+    public static void putPlayWithOthers(boolean enabled) {
+        Prefers.put("play_with_others", enabled);
+    }
+
     public static boolean isImmersiveAudioMode() {
         return Prefers.getBoolean("immersive_audio_mode", true);
     }

@@ -1,0 +1,65 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    # 每天 UTC 19:23（北京时间 03:23）同步上游 main 与 beta
+    - cron: '23 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - branch: main
+            channel: stable
+          - branch: beta
+            channel: beta
+    steps:
+      - name: Merge upstream into ${{ matrix.branch }}
+        id: merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -sS -o response.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/merge-upstream" \
+            -d '{"branch":"${{ matrix.branch }}"}')
+          echo "HTTP ${code}"
+          cat response.json
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
+
+      - name: Open issue on conflict
+        if: steps.merge.outputs.code != '200'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "上游 ${{ matrix.branch }} 同步失败 $(date -u +%Y-%m-%d)" \
+            --body "自动同步 ${{ matrix.branch }} 返回 HTTP ${{ steps.merge.outputs.code }}，通常是上游改动了 PlayerSetting / PlayerManager / ExoUtil / PlaybackActivity / Github 之一。请本地 git fetch upstream && git merge upstream/${{ matrix.branch }}，按同时播放补丁的意图解决冲突后推回 ${{ matrix.branch }}，再关闭本 issue。"
+          exit 1
+
+      - name: Trigger ${{ matrix.channel }} build
+        if: steps.merge.outputs.code == '200'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build-simulplay.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f channel=${{ matrix.channel }} \
+            -f flavor=mobile-arm64_v8a || true
