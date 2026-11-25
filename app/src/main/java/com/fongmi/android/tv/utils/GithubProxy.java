@@ -120,7 +120,10 @@ public final class GithubProxy {
 
     public static String probeUrl(String source) {
         String proxy = normalize(isEmpty(source) ? first(Setting.getGithubProxy()) : source);
-        return proxy + "https://github.com/Silent1566/webhtv/releases/download/update-channel/update.json";
+        // Probe through the fork release path so the latency test exercises the same host the
+        // update checker actually uses; a hardcoded upstream URL would report a healthy proxy for
+        // a host this build never talks to.
+        return proxy + "https://github.com/" + Github.REPO_OWNER + "/" + Github.REPO_NAME + "/releases/download/update-channel/update.json";
     }
 
     public static final class Config {
