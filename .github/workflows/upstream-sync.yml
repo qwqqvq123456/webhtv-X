@@ -58,6 +58,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
+          MERGE=$(python3 -c "import json;print(json.load(open('response.json')).get('merge_type',''))")
+          echo "merge_type=$MERGE"
+          if [ "$MERGE" = "none" ]; then
+            echo "上游无新提交，跳过构建（否则每天都会产出一个内容相同但时间戳更新的包）"
+            exit 0
+          fi
           gh workflow run build-simulplay.yml \
             --repo "${GITHUB_REPOSITORY}" \
             --ref main \
