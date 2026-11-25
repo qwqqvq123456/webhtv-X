@@ -328,7 +328,8 @@ public class ExoUtil {
             }
         }
         if (BuildConfig.DEBUG) player.addAnalyticsListener(new EventLogger());
-        player.setAudioAttributes(AudioAttributes.DEFAULT, true);
+        // 第二参数 handleAudioFocus：同时播放时交给宿主不申请焦点，避免被其他应用抢占后自动暂停
+        player.setAudioAttributes(AudioAttributes.DEFAULT, !PlayerSetting.isPlayWithOthers());
         player.setHandleAudioBecomingNoisy(true);
         player.setPlayWhenReady(true);
         player.addListener(listener);

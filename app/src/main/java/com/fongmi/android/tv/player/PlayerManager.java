@@ -6680,6 +6680,7 @@ public void resetTrack(int type) {
     }
 
     private void requestNativeAudioFocus() {
+        if (PlayerSetting.isPlayWithOthers()) return;
         AudioManager manager = audioManager();
         if (manager == null || audioFocusHeld) return;
         int result;
@@ -6734,6 +6735,7 @@ public void resetTrack(int type) {
     }
 
     private void onNativeAudioFocusChanged(int focusChange) {
+        if (PlayerSetting.isPlayWithOthers()) return;
         if (!isNativePlayer() || player == null) return;
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN -> {

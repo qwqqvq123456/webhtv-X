@@ -573,7 +573,8 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     protected boolean shouldPauseOnBackground() {
-        return PlayerSetting.isBackgroundOff();
+        // 同时播放模式下，画中画被其他应用覆盖导致的 onStop 不应打断播放
+        return !PlayerSetting.isPlayWithOthers() && PlayerSetting.isBackgroundOff();
     }
 
     protected boolean shouldAutoPlay() {
