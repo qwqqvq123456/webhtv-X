@@ -42,15 +42,7 @@ jobs:
           gh issue create \
             --repo "${GITHUB_REPOSITORY}" \
             --title "上游同步失败 $(date -u +%Y-%m-%d)" \
-            --body "自动同步返回 HTTP ${{ steps.merge.outputs.code }}。
-
-多数情况是上游改动了补丁涉及的四个文件之一：
-- \`app/src/main/java/com/fongmi/android/tv/setting/PlayerSetting.java\`
-- \`app/src/main/java/com/fongmi/android/tv/player/PlayerManager.java\`
-- \`app/src/main/java/com/fongmi/android/tv/player/exo/ExoUtil.java\`
-- \`app/src/main/java/com/fongmi/android/tv/ui/activity/PlaybackActivity.java\`
-
-处理方式：本地 \`git pull\` 后 \`git merge upstream/main\`，按 \`simulplay.patch\` 的意图解决冲突（保留「同时播放」判断），推回 main 后关闭本 issue。" || true
+            --body "自动同步返回 HTTP ${{ steps.merge.outputs.code }}，通常是上游改动了 PlayerSetting / PlayerManager / ExoUtil / PlaybackActivity 之一。请本地 git pull 后 merge upstream/main，按 simulplay 补丁的意图解决冲突，推回 main 后关闭本 issue。"
           exit 1
 
       - name: Trigger APK build
