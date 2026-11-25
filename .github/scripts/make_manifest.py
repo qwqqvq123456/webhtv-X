@@ -27,11 +27,19 @@ def main():
     parser.add_argument("--code", required=True, type=int)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument("--notes-file", default="",
+                        help="upstream release notes to append after the build summary")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
     if args.code <= 0:
         raise SystemExit("versionCode must be positive")
+
+    notes = args.notes.strip()
+    if args.notes_file and os.path.exists(args.notes_file):
+        upstream = open(args.notes_file, encoding="utf-8").read().strip()
+        if upstream:
+            notes = f"{notes}\n\n{upstream}" if notes else upstream
 
     apk_name = os.path.basename(args.apk)
     url = "https://github.com/{repo}/releases/download/{tag}/{name}".format(
@@ -46,7 +54,7 @@ def main():
         "apk": url,
         "size": os.path.getsize(args.apk),
         "sha256": sha256(args.apk),
-        "notes": args.notes.strip(),
+        "notes": notes,
         "downloads": {"github": {"url": url}},
     }
     with open(args.out, "w", encoding="utf-8") as handle:

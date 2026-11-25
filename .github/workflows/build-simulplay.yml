@@ -12,6 +12,7 @@ on:
       - '.github/workflows/build-simulplay.yml'
       - '.github/scripts/make_manifest.py'
       - '.github/scripts/verify_apk.py'
+      - '.github/scripts/fetch_upstream_notes.py'
   workflow_dispatch:
     inputs:
       channel:
@@ -158,6 +159,16 @@ jobs:
           echo "gradle args: $EXTRA"
           bash gradlew ${{ steps.pick.outputs.task }} $EXTRA --no-daemon --stacktrace
 
+      - name: Fetch upstream release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/fetch_upstream_notes.py \
+            --channel "${{ steps.pick.outputs.channel }}" \
+            --out upstream-notes.md
+          echo "--- upstream-notes.md ---"
+          head -c 400 upstream-notes.md || true
+
       - name: Make update manifest
         id: manifest
         env:
@@ -173,7 +184,13 @@ jobs:
           AAPT=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name aapt2 | sort | tail -n 1)
           CODE=$("$AAPT" dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
           echo "versionCode=$CODE"
-          NOTES=$(git log -3 --pretty='- %s')
+          {
+            echo "本构建：官方 ${VERSION_NAME} + 同时播放补丁（画中画切到其他 App 不再暂停）· 构建提交 ${GITHUB_SHA:0:7}"
+            if [ -s upstream-notes.md ]; then
+              echo
+              cat upstream-notes.md
+            fi
+          } > release-notes.md
           python3 .github/scripts/make_manifest.py \
             --apk "$APK" \
             --channel "$CHANNEL" \
@@ -181,7 +198,7 @@ jobs:
             --version-name "$VERSION_NAME" \
             --code "$CODE" \
             --repo "${GITHUB_REPOSITORY}" \
-            --notes "$NOTES" \
+            --notes-file release-notes.md \
             --out "$MANIFEST"
           cat "$MANIFEST"
           echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
@@ -211,10 +228,11 @@ jobs:
           if [ "$CHANNEL" = "beta" ]; then FLAG=--prerelease; else FLAG=--latest; fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" "$APK" "$MANIFEST" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" $FLAG \
               --title "$TAG" \
-              --notes "同时播放版自动构建（$CHANNEL 通道）"
+              --notes-file release-notes.md
             gh release upload "$TAG" "$APK" "$MANIFEST" --repo "$GITHUB_REPOSITORY" --clobber
           fi
           if gh release view update-channel --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
