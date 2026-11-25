@@ -277,14 +277,20 @@ jobs:
             --expect-version "${{ needs.prepare.outputs.version_name }}" \
             --expect-build-tag "${{ needs.prepare.outputs.tag }}"
 
+      - name: Collect artifacts
+        run: |
+          set -e
+          mkdir -p dist
+          cp "${{ steps.manifest.outputs.apk_path }}" dist/
+          cp "${{ steps.target.outputs.manifest }}" dist/
+          cp release-notes.md dist/
+          ls -lh dist
+
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.flavor }}
-          path: |
-            ${{ steps.manifest.outputs.apk_path }}
-            ${{ steps.target.outputs.manifest }}
-            release-notes.md
+          path: dist
           retention-days: 3
           if-no-files-found: error
 
