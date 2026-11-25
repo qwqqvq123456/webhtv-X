@@ -2,8 +2,9 @@ name: Sync Upstream
 
 on:
   schedule:
-    # 每天 UTC 19:23（北京时间 03:23）同步上游 main 与 beta
-    - cron: '23 19 * * *'
+    # 每 6 小时同步一次（UTC 0/6/12/18 点 23 分，北京时间 08:23 / 14:23 / 20:23 / 02:23）
+    # 上游发布新版本后最多 6 小时内就会跟进，版本号不会长时间落后
+    - cron: '23 */6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -61,12 +62,22 @@ jobs:
           set -e
           MERGE=$(python3 -c "import json;print(json.load(open('response.json')).get('merge_type',''))")
           echo "merge_type=$MERGE"
-          if [ "$MERGE" = "none" ]; then
-            echo "上游无新提交，跳过构建（否则每天都会产出一个内容相同但时间戳更新的包）"
+
+          if [ "${{ matrix.channel }}" = "beta" ]; then PRE='.isPrerelease == true'; else PRE='.isPrerelease == false'; fi
+          JQ="[.[] | select(.tagName | startswith(\"v\")) | select($PRE)][0].tagName // empty"
+          UP=$(gh release list --repo Silent1566/webhtv --limit 60 --json tagName,isPrerelease --jq "$JQ" 2>/dev/null || true)
+          OURS=$(gh release list --repo "${GITHUB_REPOSITORY}" --limit 60 --json tagName,isPrerelease --jq "$JQ" 2>/dev/null || true)
+          echo "upstream latest=$UP / ours=$OURS"
+
+          if [ "$MERGE" = "none" ] && [ "$UP" = "$OURS" ] && [ -n "$UP" ]; then
+            echo "上游无新提交且版本号已一致，跳过构建"
             exit 0
+          fi
+          if [ -n "$UP" ] && [ "$UP" != "$OURS" ]; then
+            echo "检测到上游版本号更新：$OURS -> $UP"
           fi
           gh workflow run build-simulplay.yml \
             --repo "${GITHUB_REPOSITORY}" \
-            --ref main \
+            --ref ${{ matrix.branch }} \
             -f channel=${{ matrix.channel }} \
             -f flavor=mobile-arm64_v8a || true
