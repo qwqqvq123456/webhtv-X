@@ -79,10 +79,21 @@ CNB 镜像必须停用：检查更新时的顺序是「本仓库清单 → CNB �
 
 ## 自动同步与自动构建
 
-- `Sync Upstream`（每天北京时间 03:23 + 手动）：对 `main` 和 `beta` 分别调用 GitHub 官方 `merge-upstream`；冲突时按分支开 issue。成功后自动触发对应通道的构建。
-- `Build SimulPlay APK`（push 到任一分支或手动）：release 变体 + 固定签名，发布与上游同名的 release（`v<versionName>[-beta]-<上游时间戳>`），并把清单覆盖写入 `update-channel`。同名 release 再次构建时覆盖资产、更新说明，不新增 tag。
+- `Sync Upstream`（每 6 小时 + 手动）：对 `main` 和 `beta` 分别调用 GitHub 官方 `merge-upstream`；冲突时按分支开 issue。上游无新提交且版本号一致时跳过，否则触发对应通道的构建。
+- `Build SimulPlay APK`（push 到任一分支或手动）：三个 job 串起来 —— `prepare` 解析通道与版本号，`build` 按机型矩阵并行出四个包，`publish` 汇总后一次性发布。
 
-手动构建可选 `channel`（stable/beta）、`flavor`（mobile/leanback × arm64/armv7）和 `optimize`（开启 R8，体积更小但更慢）。
+四个机型对应官方的四组产物，一次跑完 `release` 里就是完整一套：
+
+| flavor | 产物 |
+|---|---|
+| `mobile-arm64_v8a` | `mobile-arm64_v8a.apk` + `.json` |
+| `mobile-armeabi_v7a` | `mobile-armeabi_v7a.apk` + `.json` |
+| `leanback-arm64_v8a` | `leanback-arm64_v8a.apk` + `.json` |
+| `leanback-armeabi_v7a` | `leanback-armeabi_v7a.apk` + `.json` |
+
+beta 通道文件名统一带 `-beta` 后缀。任一机型构建或自检失败，`publish` 不会执行，避免出现缺机型的半成品 release。
+
+手动构建可选 `channel`（stable/beta）、`flavor`（`all` 为四机型全量，或只选一个）和 `optimize`（开启 R8，体积更小但更慢）。
 
 ## 冲突时怎么办
 
