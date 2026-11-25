@@ -49,13 +49,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
+      - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+          set -e
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=$SDK"
+          SM="$(command -v sdkmanager || true)"
+          if [ -z "$SM" ]; then
+            SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          fi
+          echo "sdkmanager=$SM"
+          test -n "$SM"
+          yes | "$SM" --licenses > /dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Resolve build task
         id: pick
