@@ -34,6 +34,8 @@ def main():
                         help="expected signing certificate SHA-256 fingerprint")
     parser.add_argument("--expect-code", required=True, type=int)
     parser.add_argument("--expect-version", required=True)
+    parser.add_argument("--expect-build-tag", default="",
+                        help="release tag baked into BuildConfig.BUILD_TAG; must match upstream")
     args = parser.parse_args()
 
     problems = []
@@ -65,7 +67,8 @@ def main():
         if actual != expected:
             problems.append(f"signer {actual[:16]}... != expected {expected[:16]}...")
 
-    fork_hits, upstream_hits, dex_count = 0, 0, 0
+    fork_hits, upstream_hits, dex_count, tag_hits = 0, 0, 0, 0
+    want_tag = args.expect_build_tag.encode()
     with zipfile.ZipFile(args.apk) as archive:
         for name in archive.namelist():
             if not name.endswith(".dex"):
@@ -74,11 +77,17 @@ def main():
             blob = archive.read(name)
             fork_hits += blob.count(FORK_RELEASE_PATH)
             upstream_hits += blob.count(UPSTREAM_RELEASE_PATH)
+            if want_tag:
+                tag_hits += blob.count(want_tag)
     print(f"dex: {dex_count} files, fork release url hits={fork_hits}, upstream release url hits={upstream_hits}")
     if fork_hits == 0:
         problems.append("no fork release URL inside the APK; update check would still hit upstream")
     if upstream_hits:
         problems.append(f"upstream release URL still present in dex ({upstream_hits} hits)")
+    if want_tag:
+        print(f"build tag: {args.expect_build_tag} hits={tag_hits}")
+        if tag_hits == 0:
+            problems.append(f"build tag {args.expect_build_tag} is not baked into the APK")
 
     print()
     if problems:
