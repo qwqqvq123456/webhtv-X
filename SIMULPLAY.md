@@ -52,18 +52,22 @@ CNB 镜像必须停用：检查更新时的顺序是「本仓库清单 → CNB �
 
 ```json
 {
-  "name": "v5.6.0-beta-202611260200",
+  "name": "v5.6.0-beta-202611252128",
   "versionName": "5.6.0",
   "channel": "beta",
   "code": 560,
-  "apk": "https://github.com/qwqqvq123456/webhtv/releases/download/v5.6.0-beta-202611260200/mobile-arm64_v8a-beta.apk",
+  "apk": "https://github.com/qwqqvq123456/webhtv/releases/download/v5.6.0-beta-202611252128/mobile-arm64_v8a-beta.apk",
   "size": 201000000,
   "sha256": "…",
   "notes": "- 构建提交摘要"
 }
 ```
 
-判定规则（`bean/Update.java` + `utils/AppVersion.java`）：`code` 大于已装版本才算更新；`code` 相等时比较 tag 里 12/14 位时间戳（`yyyyMMddHHmm`，北京时间）。因此 tag 的时间戳必须是**构建发布时刻**，早于已装版本就永远不会提示更新。
+判定规则（`bean/Update.java` + `utils/AppVersion.java`）：`code` 大于已装版本才算更新；`code` 相等时比较 tag 里 12/14 位时间戳（`yyyyMMddHHmm`，北京时间）。
+
+**版本号完全跟随上游**：构建时从上游同通道最新 release 取 tag（stable 取正式版、beta 取预发布），把它同时用作 `BuildConfig.BUILD_TAG`（「关于」页显示的版本）、release tag 和清单 `name`。所以「关于」里看到的是 `5.6.0-202611211059` 这种官方版本号，而不是本仓库自己生成的时间戳。上游不可达、或上游版本号与本分支 `app/build.gradle` 不一致时，退回本地时间戳并在日志里告警。
+
+代价是两个构建产物共用同一个版本号：同一上游版本重复构建（例如改 CI、补其它架构）不会让已装设备收到「有新版本」，需要手动下载覆盖安装。上游发布下一版后自动恢复正常提示。
 
 `update-channel` 里另有一个 `update.json`，只作为 `GithubProxy.probeUrl()` 的连通性探测目标，不含版本信息。
 
@@ -76,7 +80,7 @@ CNB 镜像必须停用：检查更新时的顺序是「本仓库清单 → CNB �
 ## 自动同步与自动构建
 
 - `Sync Upstream`（每天北京时间 03:23 + 手动）：对 `main` 和 `beta` 分别调用 GitHub 官方 `merge-upstream`；冲突时按分支开 issue。成功后自动触发对应通道的构建。
-- `Build SimulPlay APK`（push 到任一分支或手动）：release 变体 + 固定签名，发布 `v<versionName>[-beta]-<时间戳>` release，并把清单覆盖写入 `update-channel`。
+- `Build SimulPlay APK`（push 到任一分支或手动）：release 变体 + 固定签名，发布与上游同名的 release（`v<versionName>[-beta]-<上游时间戳>`），并把清单覆盖写入 `update-channel`。同名 release 再次构建时覆盖资产、更新说明，不新增 tag。
 
 手动构建可选 `channel`（stable/beta）、`flavor`（mobile/leanback × arm64/armv7）和 `optimize`（开启 R8，体积更小但更慢）。
 
