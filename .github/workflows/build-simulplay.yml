@@ -11,6 +11,7 @@ on:
       - 'gradle.properties'
       - '.github/workflows/build-simulplay.yml'
       - '.github/scripts/make_manifest.py'
+      - '.github/scripts/verify_apk.py'
   workflow_dispatch:
     inputs:
       channel:
@@ -122,6 +123,7 @@ jobs:
           "$SM" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Configure signing
+        id: sign
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
@@ -139,6 +141,11 @@ jobs:
             echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
           } > local.properties
           sed 's/storePassword=.*/storePassword=***/' local.properties
+          SHA=$(keytool -list -v -keystore "$RUNNER_TEMP/simulplay.jks" \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" -alias "${{ secrets.KEY_ALIAS }}" \
+            | sed -n 's/.*SHA256: //p' | head -n 1)
+          echo "keystore SHA256: $SHA"
+          echo "signer_sha256=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
         env:
@@ -178,7 +185,19 @@ jobs:
             --out "$MANIFEST"
           cat "$MANIFEST"
           echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "size=$(du -h "$APK" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK (signature, version and update URL)
+        env:
+          APK: ${{ steps.manifest.outputs.apk_path }}
+        run: |
+          set -e
+          python3 .github/scripts/verify_apk.py \
+            --apk "$APK" \
+            --expect-sha256 "${{ steps.sign.outputs.signer_sha256 }}" \
+            --expect-code "${{ steps.manifest.outputs.code }}" \
+            --expect-version "${{ steps.pick.outputs.version_name }}"
 
       - name: Publish release and update channel
         env:
