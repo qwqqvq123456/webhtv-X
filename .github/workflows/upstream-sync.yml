@@ -80,4 +80,4 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --ref ${{ matrix.branch }} \
             -f channel=${{ matrix.channel }} \
-            -f flavor=mobile-arm64_v8a || true
+            -f flavor=all || true
