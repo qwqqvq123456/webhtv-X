@@ -40,6 +40,7 @@
 | `getGithubReleaseAsset(tag, name)` | `https://github.com/qwqqvq123456/webhtv/releases/download/<tag>/<name>` |
 | `getReleasesApi()` / `getLatestReleaseApi()` | `https://api.github.com/repos/qwqqvq123456/webhtv/releases...` |
 | `getCnbMirrorAsset(name)` | 返回空串，**主动停用上游 CNB 镜像** |
+| `GithubProxy.probeUrl(source)` | 代理测速改用 `Github.REPO_OWNER/REPO_NAME`，探测目标 `update-channel/update.json` |
 
 CNB 镜像必须停用：检查更新时的顺序是「本仓库清单 → CNB 镜像 → Releases API」，若保留镜像，一次网络抖动就会读到上游清单，App 会提示下载官方包，装上去就把本 fork 覆盖掉了。
 
@@ -63,6 +64,8 @@ CNB 镜像必须停用：检查更新时的顺序是「本仓库清单 → CNB �
 ```
 
 判定规则（`bean/Update.java` + `utils/AppVersion.java`）：`code` 大于已装版本才算更新；`code` 相等时比较 tag 里 12/14 位时间戳（`yyyyMMddHHmm`，北京时间）。因此 tag 的时间戳必须是**构建发布时刻**，早于已装版本就永远不会提示更新。
+
+`update-channel` 里另有一个 `update.json`，只作为 `GithubProxy.probeUrl()` 的连通性探测目标，不含版本信息。
 
 ## 签名
 
