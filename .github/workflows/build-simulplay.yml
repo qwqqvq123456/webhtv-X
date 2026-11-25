@@ -67,8 +67,10 @@ jobs:
         with:
           ref: ${{ steps.ref.outputs.ref }}
 
-      - name: Resolve channel, flavor and tag
+      - name: Resolve channel, flavor and version
         id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           CH="${{ github.event.inputs.channel }}"
@@ -86,8 +88,30 @@ jobs:
           esac
           if [ "$CH" = "beta" ]; then SUFFIX=-beta; else SUFFIX=""; fi
           VN=$(grep -m1 'versionName' app/build.gradle | sed 's/.*"\([^"]*\)".*/\1/')
-          STAMP=$(TZ=Asia/Shanghai date +%Y%m%d%H%M)
-          TAG="v${VN}${SUFFIX}-${STAMP}"
+
+          # 版本号跟随上游：直接沿用上游同通道最新发布的 tag，这样「关于」页显示的版本
+          # 与官方完全一致，而不是我们自己造一个比官方更晚的时间戳。
+          # 只有在上游不可达、或上游版本号与本分支 build.gradle 不一致时才退回本地时间戳。
+          UPSTREAM=Silent1566/webhtv
+          if [ "$CH" = "beta" ]; then PRE='.isPrerelease == true'; else PRE='.isPrerelease == false'; fi
+          TAG=""
+          if command -v gh >/dev/null 2>&1; then
+            TAG=$(gh release list --repo "$UPSTREAM" --limit 60 --json tagName,isPrerelease \
+                  --jq "[.[] | select(.tagName | startswith(\"v\")) | select($PRE)][0].tagName // empty" \
+                  2>/dev/null || true)
+          fi
+          if [ -n "$TAG" ] && [ "${TAG#v$VN}" = "$TAG" ]; then
+            echo "upstream tag $TAG does not match local versionName $VN, ignoring it"
+            TAG=""
+          fi
+          if [ -n "$TAG" ]; then
+            VSOURCE=upstream
+          else
+            STAMP=$(TZ=Asia/Shanghai date +%Y%m%d%H%M)
+            TAG="v${VN}${SUFFIX}-${STAMP}"
+            VSOURCE=local
+            echo "WARN: 未能取得上游版本号，退回本地时间戳 $TAG"
+          fi
           echo "channel=$CH" >> "$GITHUB_OUTPUT"
           echo "flavor=$FLAVOR" >> "$GITHUB_OUTPUT"
           echo "task=$TASK" >> "$GITHUB_OUTPUT"
@@ -95,8 +119,9 @@ jobs:
           echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
           echo "version_name=$VN" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version_source=$VSOURCE" >> "$GITHUB_OUTPUT"
           echo "manifest=${FLAVOR}${SUFFIX}.json" >> "$GITHUB_OUTPUT"
-          echo "=== channel=$CH flavor=$FLAVOR versionName=$VN tag=$TAG manifest=${FLAVOR}${SUFFIX}.json"
+          echo "=== channel=$CH flavor=$FLAVOR versionName=$VN version=$TAG (source=$VSOURCE) manifest=${FLAVOR}${SUFFIX}.json"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -185,7 +210,7 @@ jobs:
           CODE=$("$AAPT" dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n 1)
           echo "versionCode=$CODE"
           {
-            echo "本构建：官方 ${VERSION_NAME} + 同时播放补丁（画中画切到其他 App 不再暂停）· 构建提交 ${GITHUB_SHA:0:7}"
+            echo "本构建：官方 ${TAG}（版本号与官方一致）+ 同时播放补丁（画中画切到其他 App 不再暂停）· 构建提交 ${GITHUB_SHA:0:7} · $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M') 北京时间"
             if [ -s upstream-notes.md ]; then
               echo
               cat upstream-notes.md
@@ -214,7 +239,8 @@ jobs:
             --apk "$APK" \
             --expect-sha256 "${{ steps.sign.outputs.signer_sha256 }}" \
             --expect-code "${{ steps.manifest.outputs.code }}" \
-            --expect-version "${{ steps.pick.outputs.version_name }}"
+            --expect-version "${{ steps.pick.outputs.version_name }}" \
+            --expect-build-tag "${{ steps.pick.outputs.tag }}"
 
       - name: Publish release and update channel
         env:
@@ -228,9 +254,10 @@ jobs:
           if [ "$CHANNEL" = "beta" ]; then FLAG=--prerelease; else FLAG=--latest; fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" "$APK" "$MANIFEST" --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md $FLAG
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" $FLAG \
+              --target "${{ steps.ref.outputs.ref }}" \
               --title "$TAG" \
               --notes-file release-notes.md
             gh release upload "$TAG" "$APK" "$MANIFEST" --repo "$GITHUB_REPOSITORY" --clobber
