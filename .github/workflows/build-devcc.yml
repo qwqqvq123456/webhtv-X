@@ -41,6 +41,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # Chaquopy 插件编译 Python 源需要 3.10，缺失会直接报
+      # "Couldn't find Python 3.10" 而中断构建
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
       - name: Install Android SDK packages
         run: |
           set -e
