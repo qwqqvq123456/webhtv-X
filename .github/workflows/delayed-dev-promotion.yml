@@ -4,8 +4,8 @@ name: Delayed Dev Promotion
 # the newest first-parent dev commit whose commit timestamp is older than the delay.
 
 on:
-  schedule:
-    - cron: "17 * * * *"
+  # 定时触发已停用：本仓库只有 main/beta，没有 dev 分支，每小时空转会被 GitHub
+  # 判定为浪费算力并禁用 fork 的 Actions。需要时请手动 Run workflow。
   workflow_dispatch:
     inputs:
       delay_hours:
