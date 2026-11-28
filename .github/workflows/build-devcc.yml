@@ -1,0 +1,115 @@
+name: Build Devcc APK
+
+# devcc 开发分支的自测构建：
+# - 只编手机 arm64 一个机型，产物走 workflow artifact
+# - 不创建 Release、不更新 update-channel，因此不会影响 main / beta 通道的正式用户
+on:
+  push:
+    branches: [ devcc ]
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'third_party/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/build-devcc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 连续 push 时取消上一次未完成的构建，避免在 fork 上堆积算力
+concurrency:
+  group: build-devcc
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build mobile-arm64_v8a
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK packages
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=$SDK"
+          SM="$(command -v sdkmanager || true)"
+          if [ -z "$SM" ]; then
+            SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          fi
+          echo "sdkmanager=$SM"
+          test -n "$SM"
+          yes | "$SM" --licenses > /dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+
+      - name: Configure signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -e
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning title=缺少 KEYSTORE_BASE64::本次将使用 debug 签名，安装包无法覆盖正式版，测试前请先卸载已安装的正式版"
+            echo "sdk.dir=$SDK_DIR" > local.properties
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/simulplay.jks"
+          {
+            echo "sdk.dir=$SDK_DIR"
+            echo "storeFile=$RUNNER_TEMP/simulplay.jks"
+            echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+            echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+          } > local.properties
+
+      - name: Build APK
+        env:
+          WEBHTV_APK_SUFFIX: -devcc
+        run: |
+          set -e
+          # fastRelease=true 跳过 minify 与 lint，devcc 只求快速出包自测
+          bash gradlew assembleMobileArm64_v8aRelease -PfastRelease=true --no-daemon --stacktrace
+
+      - name: Collect artifact
+        run: |
+          set -e
+          mkdir -p dist
+          APK=$(find app/build/outputs/apk/mobileArm64_v8a/release -name '*.apk' | head -n 1)
+          test -n "$APK"
+          SHORT="${GITHUB_SHA:0:7}"
+          cp "$APK" "dist/devcc-${SHORT}.apk"
+          SHA256=$(sha256sum "dist/devcc-${SHORT}.apk" | cut -d' ' -f1)
+          BUILT_AT=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %Z')
+          {
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "commit=${GITHUB_SHA}"
+            echo "built_at=${BUILT_AT}"
+            echo "source_apk=${APK}"
+            echo "sha256=${SHA256}"
+            echo
+            echo "这是 devcc 分支的自测包，只编译 arm64 手机版，未发 Release、未更新 update-channel。"
+            echo "若构建时提示 debug 签名，安装前请先卸载设备上的正式版，否则会提示签名冲突。"
+          } > "dist/BUILD-INFO-${SHORT}.txt"
+          ls -lh dist
+          cat "dist/BUILD-INFO-${SHORT}.txt"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: devcc-arm64-r${{ github.run_number }}
+          path: dist
+          retention-days: 7
+          if-no-files-found: error
